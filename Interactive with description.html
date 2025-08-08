@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>Interactive Profit Graph with Labels</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .slider-container { margin-bottom: 10px; }
+        label { display: inline-block; width: 150px; }
+        input { width: 200px; }
+        .info-box {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            width: fit-content;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .explanation-box {
+            background-color: #eef7ff;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 15px 0;
+            max-width: 750px;
+            line-height: 1.4;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+
+<h2>Interactive Profit Model with Labels</h2>
+
+<div class="slider-container">
+    <label>Price ($):</label>
+    <input type="range" id="price" min="1" max="100" step="1" value="50" />
+    <span id="price-val">50</span>
+</div>
+
+<div class="slider-container">
+    <label>Variable Cost ($):</label>
+    <input type="range" id="varCost" min="0" max="80" step="1" value="20" />
+    <span id="varCost-val">20</span>
+</div>
+
+<div class="slider-container">
+    <label>Fixed Cost ($):</label>
+    <input type="range" id="fixedCost" min="0" max="5000" step="100" value="1000" />
+    <span id="fixedCost-val">1000</span>
+</div>
+
+<div class="info-box">
+    <strong>Unit Contribution Margin:</strong> $<span id="unitCM"></span><br />
+    <strong>Break-even Sales Volume:</strong> <span id="breakEven"></span> units
+</div>
+
+<div class="explanation-box" id="explanation-text"></div>
+
+<div id="chart"></div>
+
+<script>
+function calculateData(price, varCost, fixedCost) {
+    let volumes = [];
+    let profits = [];
+    let revenues = [];
+    let costs = [];
+    let hoverData = [];
+
+    for (let q = 0; q <= 500; q += 10) {
+        let revenue = price * q;
+        let totalCost = fixedCost + varCost * q;
+        let profit = revenue - totalCost;
+
+        volumes.push(q);
+        profits.push(profit);
+        revenues.push(revenue);
+        costs.push(totalCost);
+
+        hoverData.push({
+            revenue: revenue,
+            cost: totalCost,
+            profit: profit,
+            status: profit >= 0 ? "Profit" : "Loss"
+        });
+    }
+    return { volumes, profits, revenues, costs, hoverData };
+}
+
+function updateChart() {
+    let price = parseFloat(document.getElementById('price').value);
+    let varCost = parseFloat(document.getElementById('varCost').value);
+    let fixedCost = parseFloat(document.getElementById('fixedCost').value);
+
+    document.getElementById('price-val').innerText = price;
+    document.getElementById('varCost-val').innerText = varCost;
+    document.getElementById('fixedCost-val').innerText = fixedCost;
+
+    let unitCM = price - varCost;
+    let breakEven = unitCM > 0 ? (fixedCost / unitCM).toFixed(1) : "N/A";
+
+    document.getElementById('unitCM').innerText = unitCM.toFixed(2);
+    document.getElementById('breakEven').innerText = breakEven;
+
+    // Update explanation text
+    let explanation = "";
+    explanation += `Your <strong>fixed cost</strong> of $${fixedCost.toLocaleString()} means you must pay this amount regardless of sales.<br>`;
+    explanation += `Your <strong>variable cost</strong> of $${varCost.toFixed(2)} per unit means that each unit produced adds this much to total cost.<br>`;
+    explanation += `Your selling price is $${price.toFixed(2)} per unit, giving you a <strong>unit contribution margin</strong> of $${unitCM.toFixed(2)}.<br>`;
+
+    if (unitCM > 0) {
+        explanation += `At this margin, you need to sell <strong>${breakEven}</strong> units to cover all costs (the break-even point).<br>`;
+        explanation += `Selling more than this will generate profit (green region), while selling less will generate a loss (red region).`;
+    } else {
+        explanation += `Because your variable cost is greater than or equal to your price, you will never break even — each sale increases your loss.`;
+    }
+
+    document.getElementById('explanation-text').innerHTML = explanation;
+
+    let { volumes, profits, revenues, costs, hoverData } = calculateData(price, varCost, fixedCost);
+
+    let trace1 = {
+        x: volumes,
+        y: profits,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Profit',
+        line: { color: 'black', width: 2 },
+        hovertemplate:
+            'Sales Volume: %{x} units<br>' +
+            'Revenue: $%{customdata[0]:,.2f}<br>' +
+            'Total Cost: $%{customdata[1]:,.2f}<br>' +
+            'Profit: $%{customdata[2]:,.2f}<br>' +
+            '%{customdata[3]}<extra></extra>',
+        customdata: hoverData.map(d => [d.revenue, d.cost, d.profit, d.status]),
+        yaxis: 'y'
+    };
+
+    let trace2 = {
+        x: volumes,
+        y: revenues,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Total Revenue',
+        line: { color: 'blue', width: 2 },
+        hoverinfo: 'skip',
+        yaxis: 'y2'
+    };
+
+    let trace3 = {
+        x: volumes,
+        y: costs,
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Total Cost',
+        line: { color: 'orange', width: 2 },
+        hoverinfo: 'skip',
+        yaxis: 'y2'
+    };
+
+    let annotations = [];
+
+    // Fixed cost label at y= fixedCost on cost line at x=0
+    annotations.push({
+        x: 0,
+        y: fixedCost,
+        xref: 'x',
+        yref: 'y2',
+        text: `<b style="color:orange;">Fixed Cost: $${fixedCost.toLocaleString()}</b>`,
+        showarrow: true,
+        arrowhead: 2,
+        ax: -40,
+        ay: 0,
+        font: { color: 'orange', size: 12 }
+    });
+
+    // Variable cost slope label on total cost line, near middle of x range
+    let varSlopeX = 300;
+    let varSlopeY = fixedCost + varCost * varSlopeX;
+    annotations.push({
+        x: varSlopeX,
+        y: varSlopeY,
+        xref: 'x',
+        yref: 'y2',
+        text: `<b style="color:orange;">Variable Cost per Unit: $${varCost.toFixed(2)}</b>`,
+        showarrow: true,
+        arrowhead: 2,
+        ax: 40,
+        ay: -20,
+        font: { color: 'orange', size: 12 }
+    });
+
+    // Unit contribution margin slope label on revenue line
+    let cmSlopeX = 300;
+    let cmSlopeY = price * cmSlopeX;
+    annotations.push({
+        x: cmSlopeX,
+        y: cmSlopeY,
+        xref: 'x',
+        yref: 'y2',
+        text: `<b style="color:blue;">Unit Contribution Margin: $${unitCM.toFixed(2)}</b>`,
+        showarrow: true,
+        arrowhead: 2,
+        ax: 40,
+        ay: 20,
+        font: { color: 'blue', size: 12 }
+    });
+
+    // Break-even point marker label
+    if (breakEven !== "N/A" && breakEven >= 0 && breakEven <= 500) {
+        annotations.push({
+            x: parseFloat(breakEven),
+            y: 0,
+            xref: 'x',
+            yref: 'y',
+            text: `<b style="color:green;">Break-even: ${breakEven} units</b>`,
+            showarrow: true,
+            arrowhead: 2,
+            ax: 0,
+            ay: -30,
+            font: { color: 'green', size: 12 }
+        });
+    }
+
+    // Regions
+    let profitRegion = {
+        type: 'rect',
+        xref: 'x',
+        yref: 'paper',
+        x0: breakEven !== "N/A" ? parseFloat(breakEven) : 0,
+        y0: 0,
+        x1: 500,
+        y1: 1,
+        fillcolor: 'rgba(0, 255, 0, 0.1)',
+        line: { width: 0 }
+    };
+
+    let lossRegion = {
+        type: 'rect',
+        xref: 'x',
+        yref: 'paper',
+        x0: 0,
+        y0: 0,
+        x1: breakEven !== "N/A" ? parseFloat(breakEven) : 500,
+        y1: 1,
+        fillcolor: 'rgba(255, 0, 0, 0.1)',
+        line: { width: 0 }
+    };
+
+    let breakEvenLine = {
+        type: 'line',
+        x0: breakEven !== "N/A" ? parseFloat(breakEven) : null,
+        x1: breakEven !== "N/A" ? parseFloat(breakEven) : null,
+        y0: Math.min(...profits),
+        y1: Math.max(...profits),
+        line: { dash: 'dot', color: 'green' }
+    };
+
+    let layout = {
+        title: 'Profit, Revenue, and Cost vs Sales Volume',
+        xaxis: { title: 'Sales Volume' },
+        yaxis: { title: 'Profit ($)', side: 'left' },
+        yaxis2: { title: 'Revenue / Cost ($)', overlaying: 'y', side: 'right' },
+        shapes: breakEven !== "N/A" && breakEven >= 0 && breakEven <= 500
+            ? [profitRegion, lossRegion, breakEvenLine]
+            : [],
+        annotations: annotations,
+        hovermode: 'closest'
+    };
+
+    let data = [trace1, trace2, trace3];
+    if (breakEven !== "N/A" && breakEven >= 0 && breakEven <= 500) {
+        // Keep the break-even point marker on profit line
+        data.push({
+            x: [parseFloat(breakEven)],
+            y: [0],
+            type: 'scatter',
+            mode: 'markers',
+            name: 'Break-even Point',
+            marker: { size: 10, color: 'green' },
+            hoverinfo: 'skip',
+            yaxis: 'y'
+        });
+    }
+
+    Plotly.newPlot('chart', data, layout, {responsive: true});
+}
+
+document.querySelectorAll('#price, #varCost, #fixedCost').forEach(el => {
+    el.addEventListener('input', updateChart);
+});
+
+updateChart();
+</script>
+
+</body>
+</html>
